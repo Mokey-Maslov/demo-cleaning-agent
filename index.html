@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Диспетчер — демо ИИ-агента для заявок</title>
+<meta name="description" content="Демо ИИ-агента для приёма заявок клининговой компании: считает стоимость уборки в диалоге и передаёт заявку менеджеру. Логика переносится в реального Telegram-бота.">
+<link rel="canonical" href="https://mokey-maslov.github.io/demo-cleaning-agent/">
+<meta property="og:title" content="Диспетчер — демо ИИ-агента для заявок">
+<meta property="og:description" content="ИИ-агент считает стоимость уборки в переписке и оформляет заявку.">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --surface-1:#fcfcfb;
+    --page-plane:#f9f9f7;
+    --text-primary:#0b0b0b;
+    --text-secondary:#52514e;
+    --text-muted:#898781;
+    --gridline:#e1e0d9;
+    --border:rgba(11,11,11,0.10);
+    --accent:#2a78d6;
+    --accent-wash:rgba(42,120,214,0.10);
+    --bot-bubble:#f1f0ec;
+    --user-bubble:#2a78d6;
+    --user-bubble-text:#ffffff;
+    --good:#0ca30c;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --surface-1:#1a1a19;
+      --page-plane:#0d0d0d;
+      --text-primary:#ffffff;
+      --text-secondary:#c3c2b7;
+      --text-muted:#898781;
+      --gridline:#2c2c2a;
+      --border:rgba(255,255,255,0.10);
+      --accent:#3987e5;
+      --accent-wash:rgba(57,135,229,0.14);
+      --bot-bubble:#232320;
+      --user-bubble:#3987e5;
+      --user-bubble-text:#ffffff;
+      --good:#0ca30c;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --surface-1:#1a1a19;
+    --page-plane:#0d0d0d;
+    --text-primary:#ffffff;
+    --text-secondary:#c3c2b7;
+    --text-muted:#898781;
+    --gridline:#2c2c2a;
+    --border:rgba(255,255,255,0.10);
+    --accent:#3987e5;
+    --accent-wash:rgba(57,135,229,0.14);
+    --bot-bubble:#232320;
+    --user-bubble:#3987e5;
+    --user-bubble-text:#ffffff;
+    --good:#0ca30c;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--page-plane);
+    color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding-inline:16px;
+  }
+  .wrap{
+    max-width:920px;
+    margin:0 auto;
+    padding-block:24px 40px;
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+  }
+  .demo-banner{
+    font-size:12.5px;
+    color:var(--text-secondary);
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 14px;
+    text-align:center;
+  }
+  header h1{
+    font-size:clamp(24px,4vw,30px);
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:0;
+    color:var(--text-secondary);
+    font-size:14.5px;
+    max-width:65ch;
+    line-height:1.55;
+  }
+
+  .layout{display:grid; grid-template-columns:1fr 300px; gap:20px; align-items:start;}
+  @media (max-width:760px){ .layout{grid-template-columns:1fr;} }
+
+  .phone{
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:16px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    height:600px;
+  }
+  .chat-head{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 16px;
+    border-bottom:1px solid var(--gridline);
+    flex:none;
+  }
+  .avatar{
+    width:36px;height:36px;border-radius:50%;
+    background:var(--accent); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:14px; flex:none;
+  }
+  .chat-head .name{font-weight:600; font-size:14.5px;}
+  .chat-head .status{font-size:12px; color:var(--good); display:flex; align-items:center; gap:5px;}
+  .chat-head .status .dot{width:6px;height:6px;border-radius:50%;background:var(--good);}
+
+  .messages{
+    flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{max-width:78%; padding:9px 13px; border-radius:14px; font-size:14px; line-height:1.5; animation:rise .18s ease;}
+  @keyframes rise{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+  .msg.bot{background:var(--bot-bubble); color:var(--text-primary); align-self:flex-start; border-bottom-left-radius:4px;}
+  .msg.user{background:var(--user-bubble); color:var(--user-bubble-text); align-self:flex-end; border-bottom-right-radius:4px;}
+  .typing{align-self:flex-start; background:var(--bot-bubble); border-radius:14px; border-bottom-left-radius:4px; padding:11px 15px; display:flex; gap:4px;}
+  .typing span{width:6px;height:6px;border-radius:50%;background:var(--text-muted);animation:blink 1.1s infinite;}
+  .typing span:nth-child(2){animation-delay:.15s;} .typing span:nth-child(3){animation-delay:.3s;}
+  @keyframes blink{ 0%,80%,100%{opacity:.25;} 40%{opacity:1;} }
+
+  .choices{display:flex; flex-wrap:wrap; gap:8px; padding:0 16px 12px;}
+  .choice-btn{
+    font:inherit; font-size:13.5px; padding:8px 14px; border-radius:999px;
+    border:1.5px solid var(--accent); background:var(--accent-wash); color:var(--accent);
+    cursor:pointer; font-weight:600;
+  }
+  .choice-btn:hover{background:var(--accent); color:#fff;}
+  .choice-btn:disabled{opacity:.4; cursor:default; background:var(--accent-wash); color:var(--accent);}
+
+  .input-row{
+    display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--gridline); flex:none;
+  }
+  .input-row input{
+    flex:1; font:inherit; font-size:14px; padding:10px 13px; border-radius:10px;
+    border:1.5px solid var(--border); background:var(--page-plane); color:var(--text-primary);
+  }
+  .input-row input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .input-row button{
+    font:inherit; font-weight:600; font-size:13.5px; padding:10px 16px; border-radius:10px;
+    border:none; background:var(--accent); color:#fff; cursor:pointer;
+  }
+  .input-row button:disabled{opacity:.4; cursor:default;}
+
+  aside{display:flex; flex-direction:column; gap:14px;}
+  .card{
+    background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:18px;
+  }
+  .card h2{font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin:0 0 12px; font-weight:600;}
+  .card p{font-size:13.5px; color:var(--text-secondary); line-height:1.6; margin:0 0 10px;}
+  .card p:last-child{margin-bottom:0;}
+  .card ul{margin:0; padding-left:18px; font-size:13.5px; color:var(--text-secondary); line-height:1.7;}
+  .restart-btn{
+    font:inherit; font-size:13px; font-weight:600; padding:9px 14px; border-radius:8px;
+    border:1.5px solid var(--border); background:transparent; color:var(--text-primary); cursor:pointer; width:100%;
+  }
+  .restart-btn:hover{border-color:var(--accent); color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo-banner">Демо-проект — переписка идёт в браузере на заранее заданном сценарии, без реального бэкенда. Та же логика ветвлений и подсчёта переносится в настоящего Telegram-бота через Bot API.</div>
+
+  <header>
+    <h1>Диспетчер</h1>
+    <p>ИИ-агент для приёма заявок клининговой компании: уточняет тип помещения и площадь, сам считает стоимость и передаёт готовую заявку менеджеру — без формы и без ожидания ответа человека.</p>
+  </header>
+
+  <div class="layout">
+    <div class="phone">
+      <div class="chat-head">
+        <div class="avatar">Д</div>
+        <div>
+          <div class="name">Диспетчер · Чистый двор</div>
+          <div class="status"><span class="dot"></span>на связи</div>
+        </div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="choices" id="choices"></div>
+      <div class="input-row">
+        <input type="text" id="textInput" placeholder="Введите сообщение…" disabled>
+        <button id="sendBtn" disabled>Отправить</button>
+      </div>
+    </div>
+
+    <aside>
+      <div class="card">
+        <h2>Как это устроено</h2>
+        <p>Сценарий — конечный автомат: каждый шаг знает, чего ждать от клиента (кнопка или текст), и что показать дальше. Цена считается по тем же формулам, что и в калькуляторе на сайте.</p>
+        <ul>
+          <li>Тип помещения → кнопки</li>
+          <li>Площадь → текстовый ответ, число</li>
+          <li>Расчёт стоимости → мгновенно</li>
+          <li>Телефон → передача заявки</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>В реальном боте добавляется</h2>
+        <p>Приём в Telegram через Bot API, запись заявки в таблицу или CRM, уведомление менеджеру в свой чат, а клиенту — статус заявки и номер.</p>
+      </div>
+      <button class="restart-btn" id="restartBtn">Начать заново</button>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  const messagesEl = document.getElementById('messages');
+  const choicesEl = document.getElementById('choices');
+  const textInput = document.getElementById('textInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  const RATES = { 'Квартира': 25, 'Офис': 30, 'После ремонта': 45 };
+  let state = {};
+
+  function addMessage(text, who){
+    const div = document.createElement('div');
+    div.className = 'msg ' + who;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function showTyping(cb){
+    const t = document.createElement('div');
+    t.className = 'typing';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    messagesEl.appendChild(t);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    setTimeout(() => { t.remove(); cb(); }, 550 + Math.random()*350);
+  }
+
+  function botSay(text, next){
+    showTyping(() => { addMessage(text, 'bot'); if (next) next(); });
+  }
+
+  function setChoices(options){
+    choicesEl.innerHTML = '';
+    textInput.disabled = true; sendBtn.disabled = true;
+    options.forEach(opt => {
+      const b = document.createElement('button');
+      b.className = 'choice-btn';
+      b.textContent = opt;
+      b.onclick = () => {
+        Array.from(choicesEl.children).forEach(c => c.disabled = true);
+        addMessage(opt, 'user');
+        handleAnswer(opt);
+      };
+      choicesEl.appendChild(b);
+    });
+  }
+
+  function awaitText(placeholder){
+    choicesEl.innerHTML = '';
+    textInput.disabled = false; sendBtn.disabled = false;
+    textInput.placeholder = placeholder;
+    textInput.value = '';
+    textInput.focus();
+  }
+
+  function submitText(){
+    const val = textInput.value.trim();
+    if (!val) return;
+    textInput.disabled = true; sendBtn.disabled = true;
+    addMessage(val, 'user');
+    handleAnswer(val);
+  }
+  sendBtn.onclick = submitText;
+  textInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitText(); });
+
+  function handleAnswer(val){
+    if (state.step === 'type'){
+      state.type = val;
+      state.step = 'area';
+      botSay('Понял, ' + val.toLowerCase() + '. Какая площадь в квадратных метрах?', () => awaitText('Например, 60'));
+    } else if (state.step === 'area'){
+      const n = parseFloat(val.replace(',', '.'));
+      if (!n || n <= 0 || n > 2000){
+        botSay('Нужно число метров, например 45 или 120.', () => awaitText('Площадь, м²'));
+        return;
+      }
+      state.area = n;
+      const rate = RATES[state.type];
+      state.price = Math.round(n * rate / 100) * 100;
+      state.step = 'phone';
+      botSay('Уборка ' + n + ' м² (' + state.type.toLowerCase() + ') — ориентировочно ' + state.price.toLocaleString('ru-RU') + ' ₽. Оставите телефон, чтобы закрепить заявку?', () => awaitText('Телефон'));
+    } else if (state.step === 'phone'){
+      state.phone = val;
+      state.step = 'done';
+      const num = 100000 + Math.floor(Math.random()*900000);
+      botSay('Заявка №' + num + ' передана менеджеру, свяжемся по ' + val + ' в течение 15 минут. Спасибо!', () => {
+        choicesEl.innerHTML = '';
+        textInput.value = '';
+        textInput.disabled = true; sendBtn.disabled = true; textInput.placeholder = 'Диалог завершён';
+      });
+    }
+  }
+
+  function start(){
+    messagesEl.innerHTML = '';
+    choicesEl.innerHTML = '';
+    textInput.disabled = true; sendBtn.disabled = true; textInput.placeholder = 'Введите сообщение…';
+    state = { step: 'type' };
+    botSay('Здравствуйте! Я ИИ-ассистент компании «Чистый двор». Помогу быстро посчитать стоимость уборки и оформить заявку. Какое помещение убираем?', () => {
+      setChoices(Object.keys(RATES));
+    });
+  }
+
+  restartBtn.onclick = start;
+  start();
+})();
+</script>
+</body>
+</html>
